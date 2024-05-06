@@ -1,92 +1,67 @@
-from typing import Callable, Any
+"""Implementation of Unefunge-98."""
 
-
-class InstructionPointer:
-    def __init__(self, delta=1, position=0):
-        self.delta = delta
-        self.position = position
-        self.running = True
-
-
-class StackOfStacks:
-    def __init__(self):
-        self.sos = []
-
-    def pop(self, stack_index):
-        try:
-            return self.sos[stack_index].pop()
-        except IndexError:
-            return 0
-
-    def push(self, stack_index, value):
-        try:
-            self.sos[stack_index].append(value)
-        except IndexError:
-            self.sos.insert(0, [value])
+from funge_impl.instruction_pointer import InstructionPointer
+from funge_impl.instructions import get_instruction_handler
+from funge_impl.stack_stack import StackStack
 
 
 class ProgramSpace:
     def __init__(self, text):
         self.text = text
-        self.time = 0
+        self.ticks = 0
         self.ip = InstructionPointer()
+        self.ss = StackStack()
+        self.return_code = 0
 
-    def make_step(self, ip):
-        if not ip.running:
-            return
-        ip.position += ip.delta
-        if ip.position < 0 or ip.position >= len(self.text):
-            ip.position -= (len(self.text) // abs(ip.delta)) * ip.delta
+    def log_ticks(self):
+        print("ticks = {}".format(self.ticks))
 
-    def execute_instruction(self, ip, log):
+    def log_program_state(self):
+        print(self.text)
+        print(
+            "^".join(
+                [" " * self.ip.position[0], " " * (len(self.text) - self.ip.position[0] - 1)]
+            )
+        )
+
+    def log_before_execution(self):
+        self.log_ticks()
+        self.log_program_state()
+
+    def log_after_termination(self):
+        print("Program terminated.")
+        self.log_ticks()
+        self.log_program_state()
+        print("return code = {}".format(self.return_code))
+
+    def make_step(self, ip: InstructionPointer):
+        for i in range(len(ip.position)):
+            ip.position[i] += ip.delta[i]
+        if ip.position[0] < 0 or ip.position[0] >= len(self.text):
+            ip.position[0] -= (len(self.text) // abs(ip.delta[0])) * ip.delta[0]
+
+    def execute_instruction(self, ip: InstructionPointer, ss: StackStack):
+        instruction_handler = get_instruction_handler(self.text[ip.position[0]])
+        result = instruction_handler(ip, ss)
+        if ip.delta == 0:
+            self.return_code = result
+        else:
+            self.ticks += result
+
+    def run(self, log: bool):
         if log:
-            print(self.text)
-            print("".join(['^' if i == self.ip.position else ' ' for i in range(len(self.text))]))
-        instruction = get_instruction(self.text[ip.position])
-        self.time += instruction(ip)
-
-    def run(self, log):
-        self.execute_instruction(self.ip, log)
-        while self.ip.running:
+            self.log_before_execution()
+        self.execute_instruction(self.ip, self.ss)
+        while self.ip.delta != [0]:
             self.make_step(self.ip)
-            self.execute_instruction(self.ip, log)
+            if log:
+                self.log_before_execution()
+            self.execute_instruction(self.ip, self.ss)
 
 
-def get_instruction(character):
-    if character == '@' or character == 'q':
-        def kill_ip(ip):
-            ip.delta = 0
-            ip.running = False
-            return 1
-        return kill_ip
+if __name__ == "__main__":
+    PROGRAM = "zz?#@r"
 
-    if character == '#':
-        def trampoline(ip):
-            ip.position += 1 if ip.delta > 0 else -1
-            return 1
-        return trampoline
-
-    if character == '<':
-        def west_unity(ip):
-            ip.delta = -1
-            return 1
-        return west_unity
-
-    if character == '>':
-        def east_unity(ip):
-            ip.delta = 1
-            return 1
-        return east_unity
-
-    def nop(ip):
-        return 0
-    return nop
-
-
-if __name__ == '__main__':
-    program = '#<<@<'
-    interpreter = ProgramSpace(program)
-
+    interpreter = ProgramSpace(PROGRAM)
     interpreter.run(log=True)
-    print(interpreter.time)
-
+    interpreter.log_after_termination()
